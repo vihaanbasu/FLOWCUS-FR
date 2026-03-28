@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  @apply bg-flex-bg text-slate-100 min-h-screen font-sans;
+  background-image:
+    radial-gradient(ellipse 120% 80% at 20% -10%, rgba(99, 102, 241, 0.18), transparent 50%),
+    radial-gradient(ellipse 80% 60% at 100% 0%, rgba(168, 85, 247, 0.12), transparent 45%),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(34, 211, 238, 0.06), transparent 50%);
+  background-attachment: fixed;
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-white/[0.07] backdrop-blur-xl border border-white/[0.1] shadow-glass;
+  }
+  .glass-hover {
+    @apply transition-all duration-200 hover:bg-white/[0.1] hover:border-white/[0.14];
+  }
+}
+
+/* Planner grid scrollbar */
+.planner-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+.planner-scroll::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.planner-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+}
