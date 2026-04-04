@@ -10,9 +10,21 @@ import {
 
 const app = express();
 const PORT = process.env.PORT || 3847;
+const MAX_LOGIN_ATTEMPTS = Number(process.env.MAX_LOGIN_ATTEMPTS || 5);
+const LOGIN_WINDOW_MS = Number(process.env.LOGIN_WINDOW_MS || 10 * 60 * 1000);
+const LOGIN_LOCK_MS = Number(process.env.LOGIN_LOCK_MS || 15 * 60 * 1000);
+const loginAttempts = new Map();
 
 app.use(cors());
-app.use(express.json());
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  next();
+});
+app.use(express.json({ limit: '32kb' }));
 
 function rowUser(u) {
   return {
@@ -93,6 +105,48 @@ function validatePhone(p) {
     return 'Phone must include at least 10 digits';
   }
   return null;
+}
+
+
+function cleanupLoginAttempts(now) {
+  for (const [key, value] of loginAttempts.entries()) {
+    if (value.lockUntil && value.lockUntil > now) continue;
+    if (now - value.firstAttemptAt > LOGIN_WINDOW_MS) {
+      loginAttempts.delete(key);
+    }
+  }
+}
+
+function loginAttemptKey(req, identifier) {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  return `${String(identifier || '').trim().toLowerCase()}|${ip}`;
+}
+
+function isLoginLocked(key, now) {
+  const entry = loginAttempts.get(key);
+  if (!entry) return false;
+  if (entry.lockUntil && entry.lockUntil > now) return true;
+  if (entry.lockUntil && entry.lockUntil <= now) {
+    loginAttempts.delete(key);
+  }
+  return false;
+}
+
+function trackFailedLogin(key, now) {
+  const entry = loginAttempts.get(key);
+  if (!entry || now - entry.firstAttemptAt > LOGIN_WINDOW_MS) {
+    loginAttempts.set(key, { count: 1, firstAttemptAt: now, lockUntil: 0 });
+    return;
+  }
+  entry.count += 1;
+  if (entry.count >= MAX_LOGIN_ATTEMPTS) {
+    entry.lockUntil = now + LOGIN_LOCK_MS;
+  }
+  loginAttempts.set(key, entry);
+}
+
+function clearFailedLogin(key) {
+  loginAttempts.delete(key);
 }
 
 function findUserByCredential(d, identifier) {
@@ -184,15 +238,27 @@ app.post('/api/auth/login', async (req, res) => {
     if (!identifier || !password) {
       return res.status(400).json({ error: 'Email/username and password required' });
     }
+
+    const now = Date.now();
+    cleanupLoginAttempts(now);
+    const key = loginAttemptKey(req, identifier);
+    if (isLoginLocked(key, now)) {
+      return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
+    }
+
     const d = readStore();
     const u = findUserByCredential(d, identifier);
     if (!u) {
+      trackFailedLogin(key, now);
       return res.status(401).json({ error: 'Invalid email or password' });
     }
     const ok = await verifyPassword(password, u.password_hash);
     if (!ok) {
+      trackFailedLogin(key, now);
       return res.status(401).json({ error: 'Invalid email or password' });
     }
+
+    clearFailedLogin(key);
     const token = signToken(u.id);
     res.json({ token, user: rowUser(u) });
   } catch (e) {

@@ -26,11 +26,20 @@ export function LoginPage() {
     setSubmitting(true);
     setLoginError('');
     try {
-      await login(identifier.trim(), password);
+      const cleanIdentifier = identifier.trim();
+      if (cleanIdentifier.length < 3 || cleanIdentifier.length > 254) {
+        setLoginError('Enter a valid email or username');
+        return;
+      }
+      if (password.length < 8 || password.length > 128) {
+        setLoginError('Password format is invalid');
+        return;
+      }
+      await login(cleanIdentifier, password);
       navigate('/', { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        setLoginError('Wrong username/password');
+        setLoginError('Invalid email, username, or password');
       } else {
         setLoginError(getErrorMessage(err));
       }
@@ -73,6 +82,7 @@ export function LoginPage() {
                 setLoginError('');
               }}
               autoComplete="username"
+              maxLength={254}
               required
             />
           </label>
@@ -89,6 +99,7 @@ export function LoginPage() {
                 setLoginError('');
               }}
               autoComplete="current-password"
+              maxLength={128}
               required
             />
           </label>
